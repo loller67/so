@@ -1,0 +1,102 @@
+\section{Implementación}
+
+En esta sección comentaremos brevemente tanto la implementación del algoritmo de
+elección de líder distribuido como las decisiones tomadas durante
+el desarrollo del mismo.
+
+\subsection{Algoritmo}
+
+Se tiene a los procesos organizados en forma de anillo, donde cada proceso
+conoce únicamente su número de id (además de saber si es el último del anillo
+o no), y se busca elegir a uno de ellos como líder (en este caso, el líder
+deberá ser el que tenga el número de id más grande). Además, cada proceso
+guarda una variable \verb|status|, cuyo valor indica si la última elección
+que circuló lo eligió como líder o no.
+El algoritmo distribuido para lograr esto consiste en lo siguiente:
+
+\begin{itemize}
+
+    \item Al comienzo de su ejecución, cada proceso decidirá
+    pseudoaleatoriamente si comenzará o no una nueva
+    elección de líder; en caso afirmativo, enviará un mensaje de la forma
+    \verb|<id, id>| al siguiente proceso en el anillo para iniciar la elección.
+    Para todos los mensajes de esta forma, el primer componente de la tupla 
+    indica qué proceso inició la elección, y el segundo indica el candidato
+    a líder actual de la elección.
+
+    \item Cada proceso, durante su tiempo de vida, esperará por la
+    llegada de nuevos mensajes de la forma \verb|<id, cl>|. Al recibir un 
+    mensaje, ejecutará los siguientes pasos:
+
+    \begin{itemize}
+
+        \item Setear \verb|status = NO_LIDER|, ya que hay una elección
+        en curso.
+
+        \item Si el id recibido es igual al id del proceso, la elección 
+        circuló por todo el anillo, eligiendo a \verb|cl| como líder.
+        Si \verb|cl| es igual al id del proceso, actualizar
+        \verb|status = LIDER|; caso contrario, mandarle al siguiente proceso
+        el mensaje \verb|<cl, cl>|, para avisarle al proceso líder que es el
+        ganador (que está más adelante en el anillo y todavía no sabe que él
+        es el líder)
+
+        \item Si el id recibido no es igual al id del proceso, la elección
+        todavía no terminó, y debe enviarse al siguiente proceso el mensaje
+        \verb|<id, nuevo_cl>|, siendo \verb|nuevo_cl| el máximo entre \verb|cl|
+        y el id del proceso.
+
+    \end{itemize}
+    
+    \item Una vez agotado el tiempo de ejecución, cada proceso reportará si él
+    es el líder o no, en función del valor que tenga \verb|status| al final.
+
+\end{itemize}
+
+Al utilizar las funciones de comunicación no bloqueante, después de enviar cada
+mensaje de la forma \verb|<id, cl>|, el proceso emisor del mensaje deberá
+esperar a que el proceso receptor le envíe un ACK ya que, según el enunciado,
+los procesos pueden irse del anillo sin notificarle a ninguno de los otros
+procesos del anillo. Esto implica que, si el proceso emisor no recibe un ACK
+pasada una cantidad fija de tiempo desde el envío, deberá asumir que el proceso
+receptor ha salido del anillo y volver a intentar con el siguiente proceso del
+anillo, operatoria que se repetirá hasta haber obtenido un ACK de algún proceso
+del anillo. Esto puede traer una serie de problemas, que detallaremos a
+continuación, junto con las estrategias que proponemos para solucionarlos.
+
+\subsection{Decisiones de implementación}
+
+Un potencial problema en el algoritmo descripto es el siguiente: cuando un
+proceso $P_{i}$ envía un mensaje \verb|<id, cl>| al siguiente, podría haber
+otro proceso $P_{j}$ tratando de enviarle un mensaje a $P_{i}$, ya que puede
+haber elecciones de líder concurrentes dentro del anillo. El problema radica en
+que, como $P_{i}$ está esperando por el ACK de su propio siguiente, $P{j}$ nunca
+recibiría el ACK que está esperando de $P_{i}$, con lo cual $P_{j}$ concluiría
+(erróneamente) que $P_{i}$ salió del anillo, incrementaría el índice del proceso
+al que le mandará el mensaje, y en el peor caso podría intentar enviarle el
+mensaje a un id de proceso inválido (si al incrementar el índice se excede
+de la cantidad total de procesos), lo cual hace que todos los procesos del
+anillo terminen su ejecución con error (por el envío de un mensaje a un rank
+inválido). \\
+
+Para resolver este problema, decidimos que si un proceso recibe mensajes de la
+forma \verb|<id, cl>| mientras está esperando por el ACK de otro proceso, los
+conteste inmediatamente con el ACK correspondiente (para impedir que crean que el
+proceso salió del anillo), pero que ignore el contenido de la tupla
+\verb|<id, cl>| recibida; es decir, que los mensajes recibidos mientras se espera
+por un ACK no se propaguen por el anillo.
+Tomamos esta decisión porque consideramos que, si bien se podrían
+perder algunas elecciones de líder de los procesos anteriores a $P_{i}$,
+la elección del proceso que está haciendo girar $P_{i}$ sigue girando por el
+anillo, con lo cual siempre hay por lo menos una elección que hace el recorrido
+completo. \\
+
+Otro problema posible se presenta en el caso borde en el cual se intenta elegir un líder en
+un anillo que contiene un solo proceso vivo. En este caso, al iniciar la
+elección, se tiene un proceso que está esperando por un ACK que él mismo debe
+enviarse. Para resolver este problema, al momento de enviar un inicio de
+elección, verificamos si el destinatario del mensaje tiene el mismo id que el
+proceso que está iniciando la elección; en caso afirmativo, se cortará
+manualmente (mediante la sentencia \verb|break|) el ciclo de espera por el ACK, ya que
+consideramos que no tiene sentido que un proceso espere por una confirmación de
+que él mismo está vivo.

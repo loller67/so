@@ -1,0 +1,12 @@
+@0:
+TaskCPU 70
+@1:
+TaskIO 3 30
+@2:
+TaskCPU 70
+@3:
+TaskIO 3 30
+@4:
+TaskCPU 70
+@5:
+TaskIO 3 30

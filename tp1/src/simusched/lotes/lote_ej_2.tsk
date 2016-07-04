@@ -1,0 +1,13 @@
+@0:
+TaskCPU 500
+
+@1:
+TaskDataMining 9 0 4 
+
+@1:
+TaskDataMining 19 0 4 
+
+@1:
+TaskDataMining 29 0 4 
+
+#los tiempos son 9 19 y 29 por el ciclo extra que consume la llamada al IO
